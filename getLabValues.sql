@@ -1,6 +1,6 @@
 -- This code is retrieved from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/pivot/pivoted-lab.sql
 
-DROP MATERIALIZED VIEW IF EXISTS getLabvalues2;
+DROP MATERIALIZED VIEW IF EXISTS getLabvalues2 CASCADE;
 CREATE MATERIALIZED VIEW getLabvalues2 as
 with le as --the itemid s are given in D_LABITEMS.csv for below items
 (
@@ -40,7 +40,6 @@ with le as --the itemid s are given in D_LABITEMS.csv for below items
 	, (CASE WHEN itemid in (50820) and valuenum>7 and valuenum<8 THEN valuenum else null end) as pH
 	, (CASE WHEN itemid in (50821) and valuenum>70 and valuenum<110 THEN valuenum else null end) as PaO2-- mmHg 'PaO2' (units taken from loinc code 11556-8, this actually corresponds to PO2(not PaO2 where 'a' stands for arterial) but couls not find any other related value)
 	, (CASE WHEN itemid in (50818) and valuenum>22 and valuenum<58 THEN valuenum else null end) as PaCO2-- mmHg 'PaCO2' (units taken from loinc code 11557-6, this actually corresponds to PCO2(not PaCO2 where 'a' stands for arterial) but couls not find any other related value)
-	
     --ELSE le.valuenum
   from mimiciii.labevents le
 	-- LABEVENTS do not have a icustay_id recorded. However, that can be obtained using clues such as the subject_id and hadm_id; and comparing the charttime of the measurement with an icustay time.

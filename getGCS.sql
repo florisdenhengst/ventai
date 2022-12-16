@@ -30,7 +30,7 @@
 --    This was ascertained either from interviewing the physician who ordered the sedation,
 --    or by reviewing the patient's medical record.
 
-DROP MATERIALIZED VIEW IF EXISTS getGCS2;
+DROP MATERIALIZED VIEW IF EXISTS getGCS2 CASCADE;
 CREATE MATERIALIZED VIEW getGCS2 as
 
 with base as

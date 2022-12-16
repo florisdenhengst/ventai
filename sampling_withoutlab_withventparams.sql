@@ -7,22 +7,22 @@
 -- but this version queried everything in 2 minutes. Still sampling.sql will be kept for some time since it extracts more rows than this current version. It should be examined to see if this is an error for the current or old version.
 
 --NOTE: Took 22 minutes to query.
-DROP MATERIALIZED VIEW IF EXISTS sampled_withoutlab_withventparams;
+DROP MATERIALIZED VIEW IF EXISTS sampled_withoutlab_withventparams CASCADE;
 CREATE MATERIALIZED VIEW sampled_withoutlab_withventparams as
 
 -- This part is in order to generate time binning.
 WITH minmax as(
-SELECT subject_id, hadm_id, icustay_id , min(charttime) as mint, max(charttime) as maxt
+SELECT subject_id,  icustay_id, min(charttime) as mint, max(charttime) as maxt
 FROM overalltable_withoutlab_withventparams
-GROUP BY icustay_id, subject_id, hadm_id
-ORDER BY icustay_id, subject_id, hadm_id
+GROUP BY icustay_id, subject_id
+ORDER BY icustay_id, subject_id
 	), grid as (
-	SELECT icustay_id, subject_id, hadm_id, generate_series(mint,maxt,interval '4 hours') as start_time
+	SELECT icustay_id, subject_id, generate_series(mint,maxt,interval '4 hours') as start_time
 	FROM minmax
-	GROUP BY icustay_id, subject_id, hadm_id,mint,maxt
-    ORDER BY icustay_id, subject_id, hadm_id)
+	GROUP BY icustay_id, subject_id, mint,maxt
+    ORDER BY icustay_id, subject_id)
 	
-SELECT ot.icustay_id, ot.subject_id, ot.hadm_id, start_time
+SELECT ot.icustay_id, ot.subject_id, start_time
      , round(avg(gcs)) as gcs , avg(heartrate) as heartrate , avg(sysbp) as sysbp , avg(diasbp) as diasbp , avg(meanbp) as meanbp
 	 , avg(shockindex) as shockindex, avg(RespRate) as RespRate
      , avg(TempC) as TempC , avg(SpO2) as SpO2 
@@ -48,13 +48,12 @@ SELECT ot.icustay_id, ot.subject_id, ot.hadm_id, start_time
 	 -- cumulative fluid balance
 	 , avg(cum_fluid_balance) as cum_fluid_balance
 	 -- ventilation parameters
-	 , max(PEEP) as PEEP, max(tidal_volume) as tidal_volume, max(plateau_pressure) as plateau_pressure
+	 , max(PEEP) as PEEP, max(tidal_volume) as tidal_volume, max(plateau_pressure) as plateau_pressure, max(volume_controlled) as volume_controlled
 FROM grid g
 LEFT JOIN overalltable_withoutlab_withventparams ot ON ot.charttime >= g.start_time
 				   AND ot.charttime <  g.start_time + '4 hours'
 				   AND ot.icustay_id=g.icustay_id
 				   AND ot.subject_id=g.subject_id
-				   AND ot.hadm_id=g.hadm_id
-
-GROUP  BY ot.icustay_id,ot.subject_id, ot.hadm_id, start_time
-ORDER  BY icustay_id,subject_id, hadm_id, start_time
+where ot.icustay_id is not null and g.icustay_id is not null
+GROUP  BY ot.icustay_id,ot.subject_id, start_time
+ORDER  BY icustay_id,subject_id, start_time

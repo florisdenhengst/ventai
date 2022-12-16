@@ -23,7 +23,7 @@
 
 -- code retrieved from https://github.com/MIT-LCP/mimic-code/blob/ddd4557423c6b0505be9b53d230863ef1ea78120/concepts/comorbidity/elixhauser-score-quan.sql
 
-DROP MATERIALIZED VIEW IF EXISTS getElixhauser_score2;
+DROP MATERIALIZED VIEW IF EXISTS getElixhauser_score2 CASCADE;
 CREATE MATERIALIZED VIEW getElixhauser_score2 AS
 
 with icd as

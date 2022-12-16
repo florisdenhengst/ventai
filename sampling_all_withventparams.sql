@@ -7,12 +7,12 @@
 -- but this version queried everything in 2 minutes. Still sampling.sql will be kept for some time since it extracts more rows than this current version. It should be examined to see if this is an error for the current or old version.
 
 --NOTE: Took 2 minutes to query.
-DROP MATERIALIZED VIEW IF EXISTS sampled_all_withventparams;
+DROP MATERIALIZED VIEW IF EXISTS sampled_all_withventparams CASCADE;
 CREATE MATERIALIZED VIEW sampled_all_withventparams as
 
 
 WITH minmax as(
-SELECT subject_id, hadm_id, icustay_id , min(start_time) as mint, max(start_time) as maxt
+SELECT subject_id, icustay_id , min(start_time) as mint, max(start_time) as maxt
 FROM ( SELECT *
 	   FROM sampled_withoutlab_withventparams
 	   UNION ALL
@@ -22,15 +22,15 @@ FROM ( SELECT *
 	   --GROUP BY icustay_id, subject_id,hadm_id, start_time
 	   --ORDER BY icustay_id, subject_id,hadm_id, start_time
 		)as sampled_merged
-GROUP BY icustay_id, subject_id, hadm_id
-ORDER BY icustay_id, subject_id, hadm_id
+GROUP BY icustay_id, subject_id
+ORDER BY icustay_id, subject_id
 ), grid as (
-	SELECT icustay_id, subject_id, hadm_id, generate_series(mint,maxt,interval '4 hours') as start_time
+	SELECT icustay_id, subject_id, generate_series(mint,maxt,interval '4 hours') as start_time
 	FROM minmax
-	GROUP BY icustay_id, subject_id, hadm_id,mint,maxt
-    ORDER BY icustay_id, subject_id, hadm_id)
+	GROUP BY icustay_id, subject_id, mint,maxt
+    ORDER BY icustay_id, subject_id)
 	
-SELECT ot.icustay_id, ot.subject_id, ot.hadm_id, g.start_time
+SELECT ot.icustay_id, ot.subject_id, g.start_time
      , round(avg(gcs)) as gcs , avg(heartrate) as heartrate , avg(sysbp) as sysbp , avg(diasbp) as diasbp , avg(meanbp) as meanbp
 	 , avg(shockindex) as shockindex, avg(RespRate) as RespRate
      , avg(TempC) as TempC , avg(SpO2) as SpO2 
@@ -41,7 +41,7 @@ SELECT ot.icustay_id, ot.subject_id, ot.hadm_id, g.start_time
 	 , avg(HEMOGLOBIN) as HEMOGLOBIN , avg(WBC) as WBC , avg(PLATELET) as PLATELET , avg(PTT) as PTT
      , avg(PT) as PT , avg(INR) as INR , avg(PH) as PH , avg(PaO2) as PaO2 , avg(PaCO2) as PaCO2
      , avg(BASE_EXCESS) as BASE_EXCESS , avg(BICARBONATE) as BICARBONATE , avg(LACTATE) as LACTATE 
-	 ,avg(pao2fio2ratio) as pao2fio2ratio, avg(BANDS) as BANDS -- this is only included in order to calculate SIRS score
+	 , avg(pao2)/avg(fio2)*100 as pao2fio2ratio, avg(BANDS) as BANDS -- this is only included in order to calculate SIRS score
 	 --ventilation parameters
 	 , (avg(mechvent)>0)::integer as MechVent --as long as at least one flag is 1 at the timepoint make overall as 1
 	 , avg(FiO2) as FiO2
@@ -56,7 +56,7 @@ SELECT ot.icustay_id, ot.subject_id, ot.hadm_id, g.start_time
 	 -- cumulative fluid balance
 	 , avg(cum_fluid_balance) as cum_fluid_balance
 	 -- ventilation parameters
-	 , max(PEEP) as PEEP, max(tidal_volume) as tidal_volume, max(plateau_pressure) as plateau_pressure
+	 , max(PEEP) as PEEP, max(tidal_volume) as tidal_volume, max(plateau_pressure) as plateau_pressure, max(volume_controlled) as volume_controlled
 FROM grid g
 LEFT JOIN ( SELECT *
 	   FROM sampled_withoutlab_withventparams
@@ -70,7 +70,6 @@ LEFT JOIN ( SELECT *
 				   AND ot.start_time <  g.start_time + '4 hours'
 				   AND ot.icustay_id=g.icustay_id
 				   AND ot.subject_id=g.subject_id
-				   AND ot.hadm_id=g.hadm_id
 
-GROUP  BY ot.icustay_id,ot.subject_id, ot.hadm_id, g.start_time
-ORDER  BY icustay_id,subject_id, hadm_id, start_time
+GROUP  BY ot.icustay_id,ot.subject_id, g.start_time
+ORDER  BY icustay_id,subject_id, start_time

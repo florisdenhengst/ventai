@@ -1,4 +1,4 @@
-DROP MATERIALIZED VIEW IF EXISTS ventparameters;
+DROP MATERIALIZED VIEW IF EXISTS ventparameters CASCADE;
 CREATE MATERIALIZED VIEW ventparameters AS
 
 with ce as (
@@ -6,7 +6,9 @@ select
   ce.icustay_id, ce.subject_id, ce.hadm_id, ce.charttime
     , (case when itemid in (60,437,505,506,686,220339,224700) THEN valuenum else null end) as PEEP -- PEEP
 	, (case when itemid in (639, 654, 681, 682, 683, 684,224685,224684,224686) THEN valuenum else null end) as tidal_volume -- tidal volume
-	, (case when itemid in (543) THEN valuenum else null end) as plateau_pressure -- PlateauPressure  
+	, (case when itemid in (543) THEN valuenum else null end) as plateau_pressure -- PlateauPressure 
+	, (case when itemid in (683, 224684) THEN 1 else null end) as volume_controlled
+
 	
 FROM mimiciii.chartevents ce
 	
@@ -23,7 +25,8 @@ AND ce.itemid in
 SELECT icustay_id, subject_id, hadm_id, charttime,
 	avg(PEEP) as PEEP,
 	avg(tidal_volume) as tidal_volume,
-	avg(plateau_pressure) as plateau_pressure
+	avg(plateau_pressure) as plateau_pressure,
+	max(volume_controlled) as volume_controlled
 FROM ce
 
 GROUP BY icustay_id, subject_id,hadm_id, charttime

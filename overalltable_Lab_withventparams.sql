@@ -2,7 +2,7 @@
 
 -- Querying lab values directly with other parameters returned with a memeory error. So they are queried separately here. And after the sampling they will be merged. Two tables are used for this query: 'getlabvalues2' which contains lab values found directly in LABEVENTS and 'getOthers' which contains lab values found in CHARTEVENTS.
 
-DROP MATERIALIZED VIEW IF EXISTS overalltable_Lab_withventparams;
+DROP MATERIALIZED VIEW IF EXISTS overalltable_Lab_withventparams CASCADE;
 CREATE MATERIALIZED VIEW overalltable_Lab_withventparams AS
 
 SELECT merged.subject_id, hadm_id, icustay_id, charttime 
@@ -36,7 +36,7 @@ SELECT merged.subject_id, hadm_id, icustay_id, charttime
 	 -- cumulated fluid balance
 	 , avg(cum_fluid_balance) as cum_fluid_balance
 	 -- ventilation parameters
-	 , max(PEEP) as PEEP, max(tidal_volume) as tidal_volume, max(plateau_pressure) as plateau_pressure
+	 , max(PEEP) as PEEP, max(tidal_volume) as tidal_volume, max(plateau_pressure) as plateau_pressure, max(volume_controlled) as volume_controlled
 
 FROM
 (
@@ -61,7 +61,7 @@ SELECT lab.subject_id, lab.hadm_id, lab.icustay_id, lab.charttime
 	-- cumulative fluid balance
 	 , null::double precision as cum_fluid_balance
 	-- ventilation parameters
-	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure
+	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure, null::double precision as volume_controlled
 	FROM getLabvalues2 lab 
 	--GROUP BY lab.subject_id, lab.hadm_id, lab.charttime
 UNION ALL
@@ -87,7 +87,7 @@ SELECT ot.subject_id, ot.hadm_id, ot.icustay_id, ot.charttime
 	-- cumulative fluid balance
 	 , null::double precision as cum_fluid_balance
 	-- ventilation parameters
-	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure
+	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure, null::double precision as volume_controlled
 	FROM  getOthers ot
 	
 ) merged 

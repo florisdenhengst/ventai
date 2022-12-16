@@ -3,7 +3,7 @@
 -- This query extracts weights for adult ICU patients with start/stop times
 -- if an admission weight is given, then this is assigned from intime to outtime
 
-DROP MATERIALIZED VIEW IF EXISTS weightdurations;
+DROP MATERIALIZED VIEW IF EXISTS weightdurations CASCADE;
 CREATE MATERIALIZED VIEW weightdurations as
 
 -- This query extracts weights for adult ICU patients with start/stop times
@@ -144,7 +144,7 @@ with wt_stg as
     , ec.charttime as starttime
     , LEAD(ec.charttime) OVER (PARTITION BY ie.icustay_id ORDER BY ec.charttime) as endtime
   from mimiciii.icustays ie
-  inner join echodata ec
+  inner join echo_data ec
       on ie.hadm_id = ec.hadm_id
   where ec.weight is not null
 )

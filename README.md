@@ -6,6 +6,8 @@
 
 The query files in this folder should be run with the following order.
 
+**STAGE 0:** Run queries in Vasopressors if not all `concepts' from mimic-iii have been built
+
 **STAGE 1:** Retrieve time series data and demographic info independently. SOFA and SIRS scores are excluded in this stage since they should be calculated after sampling.
 
 **getGCS.sql:** Retrieves the GCS eye, motor, verbal and total score. Only total score will be used in remaining parts. 
@@ -33,6 +35,8 @@ The query files in this folder should be run with the following order.
 **echo-data.sql:** Retrieves ECG info. This table is not used directly for ECG info but weights of some patients can be obtained from it. <br />
 
 **getWeight.sql:** Retrieves weight info for patients. For some patients only admission weight is recorded while there is also continuous data for some patients. In this query all available info for weight is taken and result is given as the average for each patient. Before this query, the query **echo-data.sql** must be run. 
+
+**getAdultIdealBodyWeight.sql:** Calculates ideal body weight for adult patients.
 
 **STAGE 2:** Merge the results of the previous stage into two tables. The initial intention was having one single table for the merged results but that caused some memory issues and they are separated here into two.
 
@@ -66,3 +70,7 @@ Here are some additional query files whose results will be used in latter MATLAB
 
 **hospmortandinouttimes.sql:** Retrieves IN and OUT times of ICU stays. <br />
 **getIdealBodyWeight.sql:** Retrieves ideal body weights of patients.
+
+## Exporting the data
+Export the data by executing ``runquery.sh to_csv.sql``. A dump is created in ``/tmp/ventilatedpatients.csv``. Copy it to the ``notebooks`` directory to continue the analysis.
+

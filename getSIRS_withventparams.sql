@@ -26,13 +26,13 @@ CREATE MATERIALIZED VIEW getSIRS_sampled_withventparams AS
 
 with scorecomp as(
 
-SELECT icustay_id, subject_id , hadm_id,  start_time
+SELECT icustay_id, subject_id ,  start_time
        , tempC , heartrate , resprate , paco2 , wbc , bands
 
 FROM sampled_all_withventparams),
 
 scorecalc as
-( SELECT icustay_id, subject_id , hadm_id, start_time
+( SELECT icustay_id, subject_id , start_time
        , tempC , heartrate , resprate , paco2 , wbc , bands
  
  , case
@@ -69,7 +69,7 @@ scorecalc as
 )
 
 select
-  icustay_id, subject_id , hadm_id, start_time
+  icustay_id, subject_id , start_time
   -- Combine all the scores to get SIRS
   -- Impute 0 if the score is missing
   , coalesce(Temp_score,0)

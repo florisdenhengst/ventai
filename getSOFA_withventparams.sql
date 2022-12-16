@@ -25,7 +25,7 @@ CREATE MATERIALIZED VIEW getSOFA_sampled_withventparams AS
 
 with scorecomp as(
 
-SELECT icustay_id,subject_id , hadm_id, start_time
+SELECT icustay_id,subject_id ,  start_time
        --respiration
        , PaO2FiO2ratio , mechvent
 	   -- nervous system
@@ -44,7 +44,7 @@ FROM sampled_all_withventparams),
 
 scorecalc as
 (
-SELECT icustay_id, subject_id, hadm_id, start_time , PaO2FiO2ratio , mechvent , gcs, meanbp , rate_dopamine , rate_norepinephrine, rate_epinephrine
+SELECT icustay_id, subject_id, start_time , PaO2FiO2ratio , mechvent , gcs, meanbp , rate_dopamine , rate_norepinephrine, rate_epinephrine
        , bilirubin , platelet , creatinine, urineoutput 
 
 	   , case
@@ -113,7 +113,7 @@ SELECT icustay_id, subject_id, hadm_id, start_time , PaO2FiO2ratio , mechvent , 
 	
 	from scorecomp)
 	
-SELECT icustay_id, subject_id , hadm_id, start_time
+SELECT icustay_id, subject_id ,  start_time
 	   -- parameters from scorecomp
        , PaO2FiO2ratio , mechvent , gcs, meanbp , rate_dopamine , rate_norepinephrine, rate_epinephrine
        , bilirubin , platelet , creatinine, urineoutput
@@ -126,5 +126,5 @@ SELECT icustay_id, subject_id , hadm_id, start_time
 	   
 FROM scorecalc
 
-ORDER BY icustay_id, subject_id , hadm_id, start_time
+ORDER BY icustay_id, subject_id ,  start_time
 

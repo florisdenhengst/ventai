@@ -142,7 +142,7 @@ with wt_stg as
     , ec.charttime as starttime
     , LEAD(ec.charttime) OVER (PARTITION BY ie.icustay_id ORDER BY ec.charttime) as endtime
   from mimiciii.icustays ie
-  inner join echodata ec
+  inner join echo_data ec
       on ie.hadm_id = ec.hadm_id
   where ec.weight is not null
 )
@@ -180,8 +180,6 @@ from echo_final ef
 INNER JOIN mimiciii.icustays ic
 ON ef.icustay_id=ic.icustay_id
 where ef.icustay_id not in (select distinct icustay_id from wt2)
-
-
 group by ef.icustay_id,ic.subject_id,ic.hadm_id
 order by icustay_id,subject_id,hadm_id
 

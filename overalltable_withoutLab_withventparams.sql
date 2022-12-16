@@ -1,6 +1,6 @@
 --Took almost 10 minutes for querying.
 
-DROP MATERIALIZED VIEW IF EXISTS overalltable_withoutLab_withventparams;
+DROP MATERIALIZED VIEW IF EXISTS overalltable_withoutLab_withventparams CASCADE;
 CREATE MATERIALIZED VIEW overalltable_withoutLab_withventparams AS
 
 SELECT merged.subject_id, hadm_id, icustay_id, charttime 
@@ -18,7 +18,7 @@ SELECT merged.subject_id, hadm_id, icustay_id, charttime
      , avg(PT) as PT , avg(INR) as INR , avg(PH) as PH , avg(PaO2) as PaO2 , avg(PaCO2) as PaCO2
      , avg(BASE_EXCESS) as BASE_EXCESS , avg(BICARBONATE) as BICARBONATE , avg(LACTATE) as LACTATE 
 	 -- multiply by 100 because FiO2 is in a % but should be a fraction. This idea is retrieved from https://github.com/MIT-LCP/mimic-code/blob/master/concepts/firstday/blood-gas-first-day-arterial.sql
-	 , avg(PaO2)/avg(Fio2)*100 as PaO2FiO2ratio 
+	 , avg(PaO2)/avg(Fio2)*100 as PaO2FiO2ratio  -- NULL everywhere due to PaO2 being a lab value
 	 , avg(BANDS) as BANDS 
 	 --ventilation parameters
 	 , (avg(mechvent)>0)::integer as MechVent --as long as at least one flag is 1 at the timepoint make overall as 1
@@ -34,7 +34,7 @@ SELECT merged.subject_id, hadm_id, icustay_id, charttime
 	 -- cumulated fluid balance
 	 , avg(cum_fluid_balance) as cum_fluid_balance
 	 -- ventilation parameters
-	 , max(PEEP) as PEEP, max(tidal_volume) as tidal_volume, max(plateau_pressure) as plateau_pressure
+	 , max(PEEP) as PEEP, max(tidal_volume) as tidal_volume, max(plateau_pressure) as plateau_pressure, max(volume_controlled) as volume_controlled
 	 
 
 FROM
@@ -59,7 +59,7 @@ SELECT subject_id, hadm_id, icustay_id, charttime
 	-- cumulative fluid balance
 	 , null::double precision as cum_fluid_balance
 	-- ventilation parameters
-	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure
+	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure, null::double precision as volume_controlled
 		
 FROM getVitalsigns2 vit
 /*UNION ALL
@@ -105,7 +105,7 @@ SELECT subject_id, hadm_id, icustay_id, charttime
 	-- cumulative fluid balance
 	 , null::double precision as cum_fluid_balance
 	-- ventilation parameters
-	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure
+	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure, null::double precision as volume_controlled
 	
 	FROM getVentilationparams2 vent 
 
@@ -130,7 +130,7 @@ SELECT subject_id, hadm_id, icustay_id, charttime
 	-- cumulative fluid balance
 	 , null::double precision as cum_fluid_balance
 	-- ventilation parameters
-	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure
+	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure, null::double precision as volume_controlled
 	
 	FROM getUrineoutput2 uo 
 	
@@ -154,7 +154,7 @@ SELECT ic.subject_id, ic.hadm_id, ic.icustay_id, starttime as charttime
 	-- cumulative fluid balance
 	 , null::double precision as cum_fluid_balance
 	-- ventilation parameters
-	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure
+	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure, null::double precision as volume_controlled
 	
 FROM getVasopressors2
 INNER JOIN mimiciii.icustays ic
@@ -181,7 +181,7 @@ SELECT subject_id, hadm_id, icustay_id, charttime
 	-- cumulative fluid balance
 	 , null::double precision as cum_fluid_balance
 	-- ventilation parameters
-	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure
+	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure, null::double precision as volume_controlled
 	
 FROM getIntravenous2
 	
@@ -206,7 +206,7 @@ SELECT subject_id, hadm_id, icustay_id, charttime
 	-- cumulative fluid balance
 	 , cum_fluid_balance as cum_fluid_balance
 	-- ventilation parameters
-	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure
+	 , null::double precision as PEEP, null::double precision as tidal_volume, null::double precision as plateau_pressure, null::double precision as volume_controlled
 	
 FROM getCumFluid cumflu
 	
@@ -231,7 +231,7 @@ SELECT subject_id, hadm_id, icustay_id, charttime
 	-- cumulative fluid balance
 	 , null::double precision as cum_fluid_balance
 	-- ventilation parameters
-	 , PEEP as PEEP, tidal_volume as tidal_volume, plateau_pressure as plateau_pressure
+	 , PEEP as PEEP, tidal_volume as tidal_volume, plateau_pressure as plateau_pressure, volume_controlled as volume_controlled
 	
 FROM ventparameters cumflu
 	
