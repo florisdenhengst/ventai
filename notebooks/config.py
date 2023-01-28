@@ -1,4 +1,8 @@
+import itertools
+
 SAMPLE_TIME_H = 4 # hours
+n_states = 650
+n_actions = 7**3
 
 demographics = ['admission_age', 'adult_ibw', 'height', 'weight', 'icu_readmission', 'elixhauser_vanwalraven', 'hospmort', 'mort90day', 'vent_duration_h']
 
@@ -142,3 +146,30 @@ fio2_bins = [
     (50, 55),
     (55, float('inf')),
 ]
+
+action_bin_definition = list(itertools.product(tv_bins, fio2_bins, peep_bins))
+
+fio2_peep_table = (
+    (30,  5),
+    (40,  5),
+    (40,  8),
+    (50,  8),
+    (50,  10),
+    (60,  10),
+    (70,  10),
+    (70,  12),
+    (70,  14),
+    (80,  14),
+    (90,  14),
+    (90,  16),
+    (90,  18),
+    (100, 18),
+    (100, 20),
+    (100, 22),
+    (100, 24),
+)
+fio2_min = 30
+fio2_max = 100
+
+
+
