@@ -9,13 +9,6 @@ from config import fio2_peep_table, fio2_bins, peep_bins, tv_bins
 
 # STATE COMPLIANCE RULES
 
-def tv_compliance_clinical(data):
-    """
-    Returns True/False to indicate whether the tidal volume values for a given
-    dataset are according to a clinically informed tv compliance rule.
-    """
-    return data.tv_derived <= 7.0
-
 def rr_compliance_clinical(data):
     """
     Returns True/False to indicate whether the respiratory rate values for a
@@ -42,7 +35,7 @@ def ph_compliance_clinical(data):
     Returns True/False to indicate whether the ph values for a given dataset
     are according to a clinically informed ph compliance rule.
     """
-    return data.ph_imp_scaled_impknn_unscaled < 7.5
+    return (data.ph_imp_scaled_impknn_unscaled > 7.2) & (data.ph_imp_scaled_impknn_unscaled < 7.5)
 
 def state_compliance_clinical(data, aggregator):
     """
@@ -52,7 +45,6 @@ def state_compliance_clinical(data, aggregator):
     etc.
     """
     compliance_fs = [
-        tv_compliance_clinical,
         rr_compliance_clinical,
         spo2_compliance_clinical,
         pplat_compliance_clinical,
@@ -63,7 +55,6 @@ def state_compliance_clinical(data, aggregator):
 
 
 # STATE COMPLIANCE AGGREGATORS
-
 def any_clinical_timestep(compliances):
     """
     Function that aggregates a combination of compliance rule results by an
@@ -87,13 +78,19 @@ def avg_clinical_timestep(compliances):
 
 
 # ACTION COMPLIANCE RULES
-
 def action_compliance_clinical(data):
     """
     Returns a pandas.Series of booleans indicating whether the actions for a
     given dataset are according to the clinically informed compliance rules.
     """
     return data.action_discrete.apply(lambda x: action_compliance_map[x])
+
+def tv_compl_clinical(tv, fio2, peep):
+    """
+    Returns True/False to indicate whether the tidal volume values for a given
+    dataset are according to a clinically informed tv compliance rule.
+    """
+    return tv <= 8.5
 
 def peep_compl_clinical(tv, fio2, peep):
     """
@@ -118,11 +115,11 @@ def action_compl_clinical(tv, fio2, peep):
     tv, fio2 and peep settings, is according to the clinically informed
     compliance rules.
     """
-    return fio2_compl_clinical(tv, fio2, peep) and peep_compl_clinical(tv, fio2, peep)
+    return fio2_compl_clinical(tv, fio2, peep) and peep_compl_clinical(tv, fio2, peep) and tv_compl_clinical(tv, fio2, peep)
 
 
 # POLICY SAFETY UTILITIES
-def safe_action_policy(policy, safety_map, unsafety_score=None):
+def safe_action_policy(policy, safety_map, unsafety_score=0.0):
     """
     Makes a given policy safe according to a given safety action-id -> bool
     safety mapping.
@@ -133,12 +130,18 @@ def safe_action_policy(policy, safety_map, unsafety_score=None):
     if unsafety_score is None:
         unsafety_score = policy.min()
     compliant_score = policy.copy()
-    for action_id in range(7**3):
+    for action_id in range(policy.shape[1]):#range(7**3):
         if not safety_map[action_id]:
             compliant_score[:, action_id] = unsafety_score
     return compliant_score
 
 def repaired_safe(policy, default_policy, greedy=False, safety_map=None):
+    """
+    Makes a given `policy` safe by setting all probabilities of the safety indicator
+    array `safety_map` to 0.0 and setting all action probabilities to `default_policy`
+    for states with all-zero action probabilities. Note that if `default_policy` is not safe,
+    the resulting policy will not be safe.
+    """
     repair_func = utils.repair_policy_greedy if greedy else utils.repair_policy
     if safety_map is None:
         safety_map = action_compliance_map
@@ -149,9 +152,44 @@ def repaired_safe(policy, default_policy, greedy=False, safety_map=None):
                 )
             )
 
+def repaired_safe_soft(policy, default_policy, unsafe_max_prob=0.0, greedy=False, safety_map=None,):
+    """
+    Makes a given `policy` more safe by setting all probabilities of the safety
+    indicator array `safety_map` to sum to `unsafe_max_prob` and setting all
+    action probabilities to `default_policy` for states with all-zero action
+    probabilities. Note that if `default_policy` is not safe, the resulting
+    unsafe action probabilities may sum to a probability > unsafe_max_prob.
+    """
+    repair_func = utils.repair_policy_greedy if greedy else utils.repair_policy
+    if safety_map is None:
+        safety_map = action_id_compliance
+    safety_map = np.array(safety_map)
+    safe_policy = np.zeros(policy.shape)
+    for state_id in range(policy.shape[0]):
+        total_state_unsafe_prob = (policy[state_id,:] * ~safety_map).sum()
+        total_state_safe_prob = (policy[state_id,:] * safety_map).sum()
+        safe_max_prob = total_state_safe_prob
+        unsafe_scalar = min(total_state_unsafe_prob, unsafe_max_prob)
+        safe_scalar = 1 - unsafe_scalar
+        for action_id, safety in enumerate(safety_map):
+            if not safety:
+                if total_state_unsafe_prob > 0.0:
+                    safe_policy[state_id, action_id] = (policy[state_id, action_id] / total_state_unsafe_prob) * unsafe_scalar
+                else:
+                    safe_policy[state_id, action_id] = 0.0
+            else:
+                if total_state_safe_prob > 0.0:
+                    safe_policy[state_id, action_id] = (policy[state_id, action_id] / total_state_safe_prob) * safe_scalar
+                else:
+                    safe_policy[state_id, action_id] = 0.0
+    return_policy = repair_func(
+            safe_policy,
+            default_policy)
+    assert (1 - return_policy.sum(axis=1)).min() < 1e-10 , "policy action probs should sum to ~1.0 for all states"
+    return return_policy
+
 
 # SAFETY DEFINITION UTILITIES
-
 fio2_peep_mins = {}
 fio2_peep_maxs = {}
 for fio2, peep in config.fio2_peep_table:
@@ -173,3 +211,6 @@ for action_id in range(7**3):
     tv_range, fio2_range, peep_range = utils.to_action_ranges(action_id)
     combos = itertools.product(tv_range, fio2_range, peep_range)
     action_compliance_map[action_id] = any((action_compl_clinical(*c) for c in combos))
+    action_id_compliance.append(action_compliance_map[action_id])
+
+action_id_compliance = np.array(action_id_compliance)

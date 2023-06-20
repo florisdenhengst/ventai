@@ -6,6 +6,11 @@ import itertools
 import config
 from config import fio2_peep_table, fio2_bins, peep_bins, tv_bins
 
+def bootstrap_ci(xs, stat=np.mean, conf=.95, n=9999, seed=0):
+    result = scipy.stats.bootstrap([xs,], stat, n_resamples=n, confidence_level=conf, random_state=seed)
+    loc = stat(xs)
+    return loc, (result.confidence_interval.low, result.confidence_interval.high)
+
 def var_to_sem(var, n):
     std = var_to_std(var)
     return std / math.sqrt(n)
@@ -33,14 +38,38 @@ def var_to_std(var):
     """
     return np.sqrt(var)
 
-def mean_ci(mu, var, n, conf=.95):
+def mean_ci(mu, var, n, conf=.95, sem=True):
     """
-    Returns a confidence interval for a given mean (mu), variance, number of
+    Returns a confidence interval for a given location (mu), variance, number of
     observations (n) and confidence interval.
     Assumes a normal distribution.
     """
-    sigma = var_to_std(var) # variance to standard error
+    if sem:
+        sigma = var_to_sem(var, n)
+    else:
+        sigma = var_to_std(var) # variance to standard error
     return scipy.stats.norm.interval(conf, loc=mu, scale=sigma)
+
+def ci(xs, conf=.95, median=False):
+    """
+    Returns a confidence interval for a given set of datapoints xs.
+    Assumes a normal distribution.
+    """
+    if median:
+        loc = xs.median()
+    else:
+        loc = xs.mean()
+    return mean_ci(loc, xs.var(), len(xs), conf=conf)
+
+def locspread(xs, conf=.95, median=False):
+    """
+    Returns location and spread of input xs.
+    """
+    if median:
+        loc = xs.median()
+    else:
+        loc = xs.mean()
+    return loc, mean_ci(conf, loc, xs.var())
 
 
 def to_known_fio2(fio2):
@@ -86,6 +115,7 @@ def to_discrete_action_bins(action_id, action_bin_definition=config.action_bin_d
     peep_bin = peep_bins.index(peep_range)
     return tv_bin, fio2_bin, peep_bin
 
+
 def to_action_ranges(action_id):
     """
     Returns, for a given action_id, the corresponding (min, max) tuples for tv,
@@ -100,7 +130,7 @@ def repair_policy(policy, default_policy):
     all-zero action probabilities.
     """
     repaired_policy = policy.copy()
-    all_zero_states = np.where((policy.sum(axis=1) == 0.0)| (np.isnan(policy.sum(axis=1))))[0]
+    all_zero_states = np.where((policy.sum(axis=1) == 0.0) | (np.isnan(policy.sum(axis=1))))[0]
     default_policy_set = default_policy.sum(axis=1) > 0.0
     for s in all_zero_states:
         if default_policy_set[s]:
@@ -111,7 +141,7 @@ def repair_policy(policy, default_policy):
 
 def repair_policy_greedy(policy, default_policy):
     """
-    Returns a copy of evaluation policy which defaults to the best action
+    Returns a copy of evaluation policy which defaults to the most popular action
     according to behavior policy if evaluation policy has states with no actions.
     """
     repaired_policy = policy.copy()
@@ -137,19 +167,16 @@ def repair_policy_uniform(policy):
         repaired_policy[s,:] = 1 / len(repaired_policy[s,:])
     return repaired_policy
 
-def repair_unsupported_greedy_policy(policy, train_set):
+def repair_unsupported_greedy_policy(policy, behavior_policy):
     """
     Resets actions in input policy to the observed action in train_set for all states
     that were visited once in train_set.
     """
     repaired_policy = policy.copy()
-    state_visit_counts = train_set.state.value_counts()
-    single_visit_states = state_visit_counts[state_visit_counts == 1].index
-    for state in single_visit_states:
-        observed_action = train_set[train_set.state == state].action_discrete.to_numpy()[0]
-        if np.argmax(policy[state, :]) != observed_action:
-            repaired_policy[state, :] = 0.0
-            repaired_policy[state, observed_action] = 1.0
+    unsupported_states = np.where(((behavior_policy == 0.0) & (policy > 0.0)))[0]
+    for state in unsupported_states:
+         repaired_policy[state, :] = 0.0
+         repaired_policy[state, behavior_policy[state,:].argmax()] = 1.0
     return repaired_policy
 
 def normalize_policy_probs(policy):

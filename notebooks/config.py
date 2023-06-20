@@ -4,7 +4,7 @@ SAMPLE_TIME_H = 4 # hours
 n_states = 650
 n_actions = 7**3
 
-demographics = ['admission_age', 'adult_ibw', 'height', 'weight', 'icu_readmission', 'elixhauser_vanwalraven', 'hospmort', 'mort90day', 'vent_duration_h']
+demographics = ['admission_age', 'adult_ibw', 'height', 'weight', 'icu_readmission', 'elixhauser_vanwalraven', 'hospmort', 'mort90day']
 
 
 vital_sign_vars = [
@@ -60,7 +60,6 @@ vent_vars = [
     'peep',
     'fio2',
     'tidal_volume',
-    'mechvent',
 ]
 
 guideline_vars = [
@@ -80,6 +79,7 @@ ffill_windows_clinical = {
     'resprate': inf,
     'spo2': inf,
     'tempc': inf,
+
     'potassium': inf,
     'sodium': inf,
     'chloride': inf,
@@ -105,10 +105,12 @@ ffill_windows_clinical = {
     'bicarbonate': inf,
     'lactate': inf,
     'pao2fio2ratio': inf,
+
     'iv_total': 8 / SAMPLE_TIME_H,
     'vaso_total': 24 / SAMPLE_TIME_H,
     'urineoutput': 8 / SAMPLE_TIME_H,
     'cum_fluid_balance': 8 / SAMPLE_TIME_H,
+
     'peep': 8 / SAMPLE_TIME_H,
     'fio2': 8 / SAMPLE_TIME_H,
     'tidal_volume': 8 / SAMPLE_TIME_H,
