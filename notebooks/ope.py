@@ -1,5 +1,8 @@
 import numpy as np
+import pandas as pd
 import math
+from functools import partial
+import itertools
 
 def unscale_result(value, original_range=(-100, 100)):
     return value * (original_range[1] - original_range[0])+original_range[0]
@@ -40,6 +43,26 @@ def ois_policy(dataset, e_policy, b_policy):
     variance = np.var( ois_returns_stay * traj_weights_stay) / len(dataset)
     return (expectation, variance)
 
+def phwis_policy(dataset, e_policy, b_policy):
+    ds = dataset.copy()
+    ds['traj_weights'] = ois_traj_weights(dataset, e_policy, b_policy)
+    ds['traj_value'] = ois_value_trajectory(dataset, e_policy, b_policy)
+    weights_vals = ds.groupby('icustay_id')[['traj_weights', 'traj_value', 'traj_len']].first()
+    # TODO FdH: what is a 'fair' default? 0.0 is according to S&B p. 105, but it does not take into account negative reward    weights_vals[
+    if weights_vals['traj_weights'].sum() == 0:
+        wis_policy = 0 # according to S&B p 105
+    else:
+        wis_policy = 0
+        n_total_trajs = dataset.icustay_id.nunique()
+        traj_lens = ds.groupby('icustay_id').traj_len.first()
+        for l in traj_lens.unique():
+            subset = weights_vals[weights_vals.traj_len == l]
+            if subset['traj_weights'].sum() > 0.0:
+                wis_policy += (len(subset)/ n_total_trajs) * (subset['traj_value'].sum() / subset['traj_weights'].sum())
+    # determine WIS variance estimation according to "Aslett, Coolen & De Bock", page 30
+    var = wis_var(wis_policy, ds.groupby('icustay_id')['traj_return'].first(), weights_vals['traj_weights'])
+    return wis_policy, var, ds.groupby('icustay_id')['traj_weights'].first()
+
 def wis_var(wis_policy, traj_returns, traj_weights):
     """
     Inputs:
@@ -71,7 +94,129 @@ def wis_policy(dataset, e_policy, b_policy):
         wis_policy = weights_vals['traj_value'].sum() / weights_vals['traj_weights'].sum()
     # determine WIS variance estimation according to "Aslett, Coolen & De Bock", page 30
     var = wis_var(wis_policy, ds.groupby('icustay_id')['traj_return'].first(), weights_vals['traj_weights'])
-    return wis_policy, var, ds.traj_weights
+    return wis_policy, var, ds.groupby('icustay_id')['traj_weights'].first()
+
+
+def wdr_inner(ds, e_policy, b_policy, gamma):
+    sa_weights = ois_sa_weights(ds, e_policy, b_policy)
+    assert sa_weights.isna().sum() == 0, "sa weight is nan somewhere in wdr_inner"
+    ds['sa_weights'] = sa_weights / sa_weights.sum()
+    first_states = ds.sort_values(['icustay_id', 'start_time']).groupby('icustay_id').first()
+    term_a = first_states.v_estimate.mean()
+    assert not np.isnan(term_a), "term_a is nan in wdr_inner"
+    ds['term_b'] = ds.reward - ds.q_estimate + gamma * ds.next_v_estimate
+    assert ds['term_b'].isna().sum() == 0, "term_b is nan somewhere in wdr_inner"
+    ds['weighted_sa'] = ds.gamma * ds.sa_weights * ds.term_b
+    weighted_traj = ds.groupby('icustay_id').weighted_sa.sum()
+    assert not np.isnan(weighted_traj).any(), "weighted_traj is somewhere nan in wdr_inner"
+    summed_weighted_traj = weighted_traj.sum()
+    assert not np.isnan(summed_weighted_traj), "summed_weighted_traj is nan in wdr_inner"
+    return term_a, term_a + summed_weighted_traj
+
+def wdr_policy(dataset, e_policy, b_policy, q_e_estimator, v_e_estimator, gamma):
+    """
+    Weighted doubly robust estimator as introduced in Equation 2 of ''Data-Efficient
+    Off-Policy Policy Evaluation for Reinforcement Learning'' by Thomas & Brunskill 2016.
+    Takes as input a dataset of trajectories, an evaluation policy, a behavior policy, a
+    state-value estimator for the evaluation policy 'v_e_estimator' and a state-action value
+    estimator 'q_e_estimator'.
+    """
+    ds = dataset.copy()
+    ds['v_estimate'] = ds.state.apply(v_e_estimator)
+    assert ds['v_estimate'].isna().sum() == 0, "V estimate is nan somehwere"
+    ds['next_v_estimate'] = ds.state.apply(v_e_estimator).shift(-1).fillna(0.0) # reward is 0 for terminal absorbing states
+    ds['q_estimate'] = ds[['state', 'action_discrete']].apply(q_e_estimator, axis=1)
+    assert ds['q_estimate'].isna().sum() == 0, "Q estimate is nan somehwere"
+    ds['gamma'] = ds.traj_count.apply(lambda x: gamma ** x)
+    return wdr_inner(ds, e_policy, b_policy, gamma)
+
+def phwdr_policy(dataset, e_policy, b_policy, q_e_estimator, v_e_estimator,  gamma):
+    """
+    Per-horizon weighted doubly robust estimator as introduced in Appendix A of
+    ''Behaviour Policy Estimation in Off-Policy Policy Evaluation: Calibration
+    Matters'' by Raghu et al. 2018.
+    Takes as input a dataset of trajectories, an evaluation policy, a behavior policy, a
+    state-value estimator for the evaluation policy 'v_e_estimator' and a state-action value
+    estimator 'q_e_estimator'.
+    """
+    # TODO FdH: implement
+    ds = dataset.copy()
+    ds['v_estimate'] = ds.state.apply(v_e_estimator)
+    ds['next_v_estimate'] = ds.state.apply(v_e_estimator).shift(-1).fillna(0.0) # reward is 0 for terminal absorbing states
+    ds['q_estimate'] = ds[['state', 'action_discrete']].apply(q_e_estimator, axis=1)
+    ds['gamma'] = ds.traj_count.apply(lambda x: gamma ** x)
+    n = ds.icustay_id.nunique()
+    phwdr_result = 0.0
+    for l in ds.traj_len.unique():
+        subset = ds[ds.traj_len == l]
+        n_subset = subset.icustay_id.nunique()
+        _, wdr_inner_result = wdr_inner(subset, e_policy, b_policy, gamma)
+        phwdr_inner =  wdr_inner_result * (n_subset / n)
+        assert not np.isnan(phwdr_result), "phwdr is nan for length {}".format(l)
+        phwdr_result += phwdr_inner
+    return phwdr_result
+
+
+def infer_estimators_tabular(dataset, policy, gamma, k):
+    """
+    Infers Q and V estimators for a given policy using FQE.
+    """
+    n_actions = policy.shape[1]
+    n_states = policy.shape[0]
+    q_estimate = np.zeros(shape=(n_states, n_actions))
+    v_estimate = np.zeros(shape=n_states)
+    for i in range(k):
+        targets = [[[] for _ in range(n_actions)] for _ in range(n_states)]
+        for row in dataset[['state', 'action_discrete', 'reward', 'next_state']].itertuples():
+            s, a, r, ns = row.state, row.action_discrete, row.reward, row.next_state
+            nqv = 0
+            assert not np.isnan(r), "reward is nan for {}".format((s,a,ns))
+            if ns < n_states:
+                for a in range(n_actions):
+                    assert not np.isnan(q_estimate[ns, a]), "q_estimate is nan for {}".format((s,a))
+                    assert not np.isnan(policy[ns, a]), "policy is nan for {}".format((s,a))
+                    nqv += q_estimate[ns, a] * policy[ns, a]
+                targets[s][a].append(r + gamma * nqv)
+            else:
+                targets[s][a].append(r)
+        for s, a in itertools.product(range(n_states), range(n_actions)):
+            if len(targets[s][a]) > 0:
+                q_estimate[s, a] = sum(targets[s][a]) / len(targets[s][a])
+    for s in range(n_states):
+        v_estimate_s = 0
+        for a in range(n_actions):
+            assert np.isnan(policy[s, a]).sum() == 0, "policy is nan for {}".format((s,a))
+            assert np.isnan(q_estimate[s, a]) == 0, "q_estimate is nan for {}".format((s,a))
+            v_estimate_s += q_estimate[s, a] * policy[s, a]
+        v_estimate[s] = v_estimate_s
+        assert not np.isnan(v_estimate[s]), "v estimate is nan for {}".format(s)
+    return q_estimate, v_estimate
+
+def infer_estimators_func(dataset, policy, gamma, k):
+    def get_from_tabular_sa(tabular, sa):
+        return tabular[sa[0], sa[1]]
+    def get_from_tabular_s(tabular, state):
+        return tabular[state]
+    q_tabular, v_tabular = infer_estimators_tabular(dataset, policy, gamma, k)
+    return partial(get_from_tabular_sa, q_tabular), partial(get_from_tabular_s, v_tabular)
+
+
+def inner_ess(importance_weights):
+    """
+    helper function to compute effective sample sizes.
+    """
+    normalized_importance_weights = importance_weights / importance_weights.sum()
+    return (normalized_importance_weights ** 2).sum()
+
+def ess(importance_weights):
+    """
+    Returns the effective sample size according to the standard definition for importance sampling by Kong (1992).
+    """
+    ess = inner_ess(importance_weights)
+    if ess == 0.0:
+        return 0.0
+    else:
+        return 1.0 / inner_ess(importance_weights)
 
 def hcope(dataset, e_policy, b_policy, c, delta, unscale=True, optimized=True):
     """
